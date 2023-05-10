@@ -3,9 +3,10 @@ import { v4 as uuid } from "uuid";
 import "./App.css";
 
 const Types = {
-  normal: 1, // Normal gün 09.00 - 18.00
-  half: 2, // Yarım gün 09.00 - 13.30
-  free: 3, // Tatil günü
+  Normal: 1, // Normal gün 09.00 - 18.00
+  "Yarım Gün": 2, // Yarım gün 09.00 - 13.30
+  "Mesai Dışı": 3, // Tatil günü,
+  "Ara Verme": 4, // Ara verme süreleri
 };
 
 function App() {
@@ -13,8 +14,12 @@ function App() {
   const [selectedPersonId, setSelectedPersonId] = useState(null);
 
   const save = () => {
-    if(localStorage.getItem("data")) {
-      if(!window.confirm("Tarayıcınızda daha önceden kaydedilmiş olan verilerin üzerine yazılacak...")) {
+    if (localStorage.getItem("data")) {
+      if (
+        !window.confirm(
+          "Tarayıcınızda daha önceden kaydedilmiş olan verilerin üzerine yazılacak..."
+        )
+      ) {
         alert("Kayıt iptal edildi.");
       }
     }
@@ -34,7 +39,7 @@ function App() {
     if (newSelectedPersonId === "null") newSelectedPersonId = null;
     setData(newData);
     setSelectedPersonId(newSelectedPersonId);
-    alert("Kayıt yüklendi.")
+    alert("Kayıt yüklendi.");
   };
 
   const selectedPersonName = useMemo(() => {
@@ -85,7 +90,7 @@ function App() {
       id: uuid(),
       start: "",
       finish: "",
-      type: Types.normal,
+      type: Types["Normal"],
       diff: 0,
     });
     setData(newData);
@@ -124,78 +129,152 @@ function App() {
     setData(newData);
   };
 
+  const getDate = (startParts) => {
+    if (startParts.length === 2) {
+      return new Date(2000, 1, 1, startParts[0], startParts[1], 0);
+    }
+    return null;
+  };
+
+  const getDiff = (date1, date2) => {
+    return Math.abs(date1 - date2) / 1000 / 60;
+  };
+
+  const getStandardStartHour = (type) => {
+    return type === Types["Normal"] ? 9 : type === Types["Yarım Gün"] ? 9 : 0;
+  };
+  const getStandardStartMinute = (type) => {
+    return type === Types["Normal"] ? 0 : type === Types["Yarım Gün"] ? 0 : 0;
+  };
+  const getStandardStartDate = (type) => {
+    return new Date(
+      2000,
+      1,
+      1,
+      getStandardStartHour(type),
+      getStandardStartMinute(type),
+      0
+    );
+  };
+  const getStandardFinishDate = (type) => {
+    return new Date(
+      2000,
+      1,
+      1,
+      getStandardFinishHour(type),
+      getStandardFinishMinute(type),
+      0
+    );
+  };
+  const getTimeParts = (timeString) => {
+    const parts = timeString
+      .replace(/[^0-9:]/g, ":")
+      .split(":")
+      .map((x) => Number(x))
+      .filter((x) => !isNaN(x));
+    if (parts.length > 1) return [parts[0], parts[1]];
+    if (parts.length === 1 && parts[0]) return [parts[0], 0];
+    else return [];
+  };
+
+  const getStandardFinishHour = (type) => {
+    return type === Types["Normal"] ? 18 : type === Types["Yarım Gün"] ? 13 : 0;
+  };
+  const getStandardFinishMinute = (type) => {
+    return type === Types["Normal"] ? 0 : type === Types["Yarım Gün"] ? 30 : 0;
+  };
+
   const showCalculatedResult = ({ start, finish, type }) => {
     type = Number(type);
-    const startParts = start
-      .split(":")
-      .map((x) => Number(x))
-      .filter((x) => !isNaN(x));
-    const finishParts = finish
-      .split(":")
-      .map((x) => Number(x))
-      .filter((x) => !isNaN(x));
-    const now = new Date();
-    const standardStart = new Date(
-      now.getFullYear(),
-      now.getMonth(),
-      now.getDate(),
-      type === Types.normal ? 9 : type === Types.half ? 9 : 0,
-      0,
-      0
-    );
-    const standardFinish = new Date(
-      now.getFullYear(),
-      now.getMonth(),
-      now.getDate(),
-      type === Types.normal ? 18 : type === Types.half ? 13 : 0,
-      type === Types.normal ? 0 : type === Types.half ? 30 : 0,
-      0
-    );
-    const standardDiff = (standardFinish - standardStart) / 1000 / 60;
-    const diffs = [];
-    if (startParts.length === 2) {
-      const startDate = new Date(
-        now.getFullYear(),
-        now.getMonth(),
-        now.getDate(),
-        startParts[0],
-        startParts[1],
-        0
-      );
-      const diff = (standardStart - startDate) / 1000 / 60;
-      if (diff < -standardDiff) {
-        diffs.push(-standardDiff);
-      } else {
-        diffs.push(diff);
+    const startParts = getTimeParts(start);
+    const finishParts = getTimeParts(finish);
+
+    const standardStart = getStandardStartDate(type);
+    const standardFinish = getStandardFinishDate(type);
+
+    const startDate = getDate(startParts);
+    const finishDate = getDate(finishParts);
+
+    // Mesai yapılan bir gün için...
+    if (type === Types["Normal"] || type === Types["Yarım Gün"]) {
+      // start ve finish belliyse
+      if (startDate && finishDate) {
+        // start, finish'ten büyük olamaz.
+        if (startDate > finishDate) return 0;
+
+        // start, mesai bitiminden sonraysa start ve finish arası süre tümden kazançtır.
+        if (startDate > standardFinish) return getDiff(startDate, finishDate);
+
+        const diff = [];
+
+        // start, mesai başlangıcından önceyse aradaki fark kazançtır, yoksa kayıptır.
+        if (startDate < standardStart) {
+          diff.push(getDiff(startDate, standardStart));
+        } else {
+          diff.push(-getDiff(startDate, standardStart));
+        }
+
+        // finish, mesai bitiminden sonraysa aradaki fark kazançtır, yoksa kayıptır.
+        if (finishDate > standardFinish) {
+          diff.push(getDiff(finishDate, standardFinish));
+        } else {
+          diff.push(-getDiff(finishDate, standardFinish));
+        }
+
+        // start ve finish kazançları/kayıpları toplanıyor.
+        return diff.reduce((sum, x) => sum + x, 0);
       }
-    }
-    if (finishParts.length === 2) {
-      const finishDate = new Date(
-        now.getFullYear(),
-        now.getMonth(),
-        now.getDate(),
-        finishParts[0],
-        finishParts[1],
-        0
-      );
-      const diff = (finishDate - standardFinish) / 1000 / 60;
-      if (startParts.length === 2 && diffs[0] === -standardDiff) {
-        const startDate = new Date(
-          now.getFullYear(),
-          now.getMonth(),
-          now.getDate(),
-          startParts[0],
-          startParts[1],
-          0
-        );
-        const newDiff = (finishDate - startDate) / 1000 / 60;
-        diffs.push(newDiff);
-      } else {
-        diffs.push(diff);
+
+      // start varsa (finish yokken)
+      if (startDate) {
+        // finish yokken start, mesai bitiminden sonra olamaz.
+        if (startDate > standardFinish) return 0;
+
+        // start, mesai başlangıcından önceyse aradaki fark kazançtır, yoksa kayıptır.
+        if (startDate < standardStart) return getDiff(startDate, standardStart);
+        else return -getDiff(startDate, standardStart);
       }
+
+      // finish varsa (start yokken)
+      if (finishDate) {
+        // finish, mesai başlangıcından sonra olamaz.
+        if (finishDate < standardStart) return 0;
+
+        // finish, mesai bitiminden sonraysa aradaki fark kazançtır, yoksa kayıptır.
+        if (finishDate > standardFinish) {
+          return getDiff(finishDate, standardFinish);
+        } else {
+          return -getDiff(finishDate, standardFinish);
+        }
+      }
+
+      // hiçbir tarih belli değilse hesaplama yapılmaz.
+      return 0;
     }
-    const result = diffs.reduce((sum, x) => sum + x, 0);
-    return result;
+
+    // Normalde çalışılmayan bir gün için...
+    if (type === Types["Mesai Dışı"]) {
+      // start veya finish olmazsa hesaplama yapılmaz.
+      if (!startDate || !finishDate) return 0;
+
+      // start, finish'ten büyük olamaz.
+      if (startDate > finishDate) return 0;
+
+      // start ve finish arasındaki fark kazançtır.
+      return getDiff(startDate, finishDate);
+    }
+
+    // Normalde çalışılan bir günde ara verildiyse
+    if (type === Types["Ara Verme"]) {
+      // start veya finish olmazsa hesaplama yapılmaz.
+      if (!startDate || !finishDate) return 0;
+
+      // start, finish'ten büyük olamaz.
+      if (startDate > finishDate) return 0;
+
+      // start ve finish arasındaki fark kayıptır.
+      return -getDiff(startDate, finishDate);
+    }
   };
 
   const insertResult = () => {};
@@ -301,7 +380,7 @@ function App() {
                     value={item.diff + "dk"}
                     disabled
                     className={
-                      item.diff > 0 ? "good" : item.diff < 0 ? "bad" : "normal"
+                      item.diff > 0 ? "good" : item.diff < 0 ? "bad" : "Normal"
                     }
                   />
                   <button
